@@ -43,7 +43,7 @@ A multi-threaded desktop application to organize photos and videos into structur
 - Copy
 - Edit
 - python photo_organizer.py
-- Usage
+## Usage
 - Select the base directory containing your photos/videos.
 
 - Choose the desired folder structure for organizing files:
