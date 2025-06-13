@@ -34,38 +34,39 @@ A multi-threaded desktop application to organize photos and videos into structur
 
 1. Clone or download the repository.  
 2. Install dependencies:  
-   ```bash
+   ``bash
    pip install PyQt5 Pillow psutil
-Run the app:
+ ``
+## Run the app:
 
-bash
-Copy
-Edit
-python photo_organizer.py
-Usage
-Select the base directory containing your photos/videos.
+- bash
+- Copy
+- Edit
+- python photo_organizer.py
+- Usage
+- Select the base directory containing your photos/videos.
 
-Choose the desired folder structure for organizing files:
+- Choose the desired folder structure for organizing files:
 
-Day (DD-MM-YYYY)
+- Day (DD-MM-YYYY)
 
-Month/Day (YYYY/Month/DD)
+- Month/Day (YYYY/Month/DD)
 
-Year/Month/Day (YYYY/MM/DD)
+- Year/Month/Day (YYYY/MM/DD)
 
-Year/Day of Year (YYYY/DDD)
+- Year/Day of Year (YYYY/DDD)
 
-Check the option to separate videos into their own Videos folder if desired.
+- Check the option to separate videos into their own Videos folder if desired.
 
-Add any folders to exclude from scanning.
+- Add any folders to exclude from scanning.
 
-Optionally enable removing empty folders after organizing.
+- Optionally enable removing empty folders after organizing.
 
-Click Start Organizing. Progress and logs will update live.
+- Click Start Organizing. Progress and logs will update live.
 
-Reset settings and cache if needed via the reset button.
+- Reset settings and cache if needed via the reset button.
 
-Notes
+## Notes
 The app respects hidden and system files when removing empty folders (Windows only).
 
 Metadata caching speeds up repeated runs by avoiding re-extraction of unchanged files.
@@ -74,7 +75,7 @@ Duplicate filename conflicts are resolved by renaming files to avoid overwriting
 
 OneDrive running status is detected to warn about possible interference (disabled by default).
 
-Troubleshooting
+## Troubleshooting
 Ensure you have read/write permissions on the base directory and any target folders.
 
 If files are skipped or errors occur, check logs in the app window for details.
@@ -82,4 +83,4 @@ If files are skipped or errors occur, check logs in the app window for details.
 For large collections, initial runs may take time due to metadata extraction.
 
 License
-Specify your license here (e.g., MIT, GPL, proprietary).
+MIT License
