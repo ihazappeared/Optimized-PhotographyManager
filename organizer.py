@@ -1,21 +1,28 @@
-from PySide6.QtCore import QObject, Signal  # or from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 from multiprocessing import cpu_count
+from concurrent.futures import ThreadPoolExecutor
 import threading
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import os
 from datetime import datetime
+
 from metadata_cache import MetadataCache
 from metadata import FileGatherer
 from file_ops import FolderNameGenerator, FileMover
-from constants import RAW_EXTS, VIDEO_EXTS, file_exts
+from constants import RAW_EXTS, VIDEO_EXTS, file_exts, CACHE_FILENAME
+
 
 class PhotoOrganizer(QObject):
     progress = Signal(int)
     log_msg = Signal(str)
 
-    def __init__(self, base_dir: str, folder_structure: str,
-                 max_workers: int = cpu_count(), separate_videos: bool = False,
-                 excluded_folders: list | None = None):
+    def __init__(
+        self,
+        base_dir: str,
+        folder_structure: str,
+        max_workers: int = cpu_count(),
+        separate_videos: bool = False,
+        excluded_folders: list[str] | None = None,
+    ):
         super().__init__()
         self.base_dir = base_dir
         self.folder_structure = folder_structure
@@ -26,68 +33,68 @@ class PhotoOrganizer(QObject):
         self.lock = threading.RLock()
         self._cancel_requested = threading.Event()
 
-        cache_path = os.path.join(self.base_dir, ".photo_metadata_cache.db")
+        cache_path = os.path.join(self.base_dir, CACHE_FILENAME)
         self.cache = MetadataCache(cache_path)
+        self.memory_cache = self.cache.load_into_memory()
 
-    def cancel(self):
+    def cancel(self) -> None:
         self._cancel_requested.set()
 
-    def is_cancelled(self):
+    def is_cancelled(self) -> bool:
         return self._cancel_requested.is_set()
 
-    def _log(self, msg: str):
+    def _log(self, msg: str) -> None:
         self.log_msg.emit(msg)
 
-    def _emit_progress(self, percent: int):
+    def _emit_progress(self, percent: int) -> None:
         self.progress.emit(percent)
 
-    def _gather_files(self):
+    def _gather_files(self) -> tuple[list, int]:
         self._log(f"Starting scan in {self.base_dir}...")
         file_list = list(FileGatherer.gather_files_with_metadata(
-            self.base_dir, file_exts, self.cache, self.excluded_folders
+            self.base_dir, file_exts, self.cache, self.memory_cache, self.excluded_folders
         ))
         total = len(file_list)
         self._log(f"Metadata loaded for {total} files.")
         self._log(f"Found {total} files to organize.")
         return file_list, total
 
-    def _move_file_worker(self, file_data, existing_files):
-        try:
-            if self.is_cancelled():
-                return
+    def _move_file_worker(self, file_data: tuple[str, str | None], existing_files: set) -> None:
+        if self.is_cancelled():
+            return
 
-            path, date_taken_iso = file_data
-            dt = None
-            if date_taken_iso:
-                try:
-                    dt = datetime.fromisoformat(date_taken_iso)
-                except ValueError:
-                    self._log(f"Invalid date format for file {path}, skipping date parsing.")
+        path, date_taken_iso = file_data
+        dt = None
+        if date_taken_iso:
+            try:
+                dt = datetime.fromisoformat(date_taken_iso)
+            except ValueError:
+                self._log(f"Invalid date format for file {path}, skipping date parsing.")
 
-            ext = os.path.splitext(path)[1].lower()
+        ext = os.path.splitext(path)[1].lower()
 
-            if ext in RAW_EXTS:
-                target_dir = os.path.join(
-                    self.base_dir,
-                    FolderNameGenerator.generate(dt, ext, self.folder_structure),
-                    "Raw"
-                )
-            elif ext in VIDEO_EXTS and self.separate_videos:
-                target_dir = os.path.join(self.base_dir, "Videos")
-            else:
-                target_dir = os.path.join(
-                    self.base_dir,
-                    FolderNameGenerator.generate(dt, ext, self.folder_structure)
-                )
+        if ext in RAW_EXTS:
+            target_dir = os.path.join(
+                self.base_dir,
+                FolderNameGenerator.generate(dt, ext, self.folder_structure),
+                "Raw"
+            )
+        elif ext in VIDEO_EXTS and self.separate_videos:
+            target_dir = os.path.join(self.base_dir, "Videos")
+        else:
+            target_dir = os.path.join(
+                self.base_dir,
+                FolderNameGenerator.generate(dt, ext, self.folder_structure)
+            )
 
-            # Lock while accessing existing_files to ensure thread safety
-            with self.lock:
+        with self.lock:
+            try:
                 FileMover.safe_move_file(path, target_dir, self.lock, existing_files, self._log)
+            except Exception as e:
+                self._log(f"Error moving file {path}: {e}")
 
-        except Exception as e:
-            self._log(f"Error processing file {file_data[0]}: {e}")
-
-    def organize(self):
+    def organize(self) -> None:
+    
         existing_files = set()
 
         file_list, total_files = self._gather_files()
@@ -96,7 +103,7 @@ class PhotoOrganizer(QObject):
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = []
 
-            for idx, file_data in enumerate(file_list):
+            for file_data in file_list:
                 if self.is_cancelled():
                     self._log("Organization cancelled before submission.")
                     break

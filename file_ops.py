@@ -1,7 +1,6 @@
 import os
 import hashlib
 import shutil
-import traceback
 import threading
 from datetime import datetime
 
@@ -29,11 +28,8 @@ class FileUtils:
         try:
             hasher = hashlib.md5()
             with open(path, 'rb') as f:
-                while True:
-                    buf = f.read(block_size)
-                    if not buf:
-                        break
-                    hasher.update(buf)
+                while chunk := f.read(block_size):
+                    hasher.update(chunk)
             return hasher.hexdigest()
         except Exception:
             return ""
@@ -60,11 +56,9 @@ class FileUtils:
         if not os.path.exists(dest):
             return dest
 
-        # First quick hash compare
         if FileUtils.quick_file_hash(dest) == FileUtils.quick_file_hash(src):
-            # Deeper check with full file hash and byte-by-byte
             if FileUtils.files_are_identical(dest, src):
-                return None  # Duplicate, no need to move
+                return None
 
         base, ext = os.path.splitext(dest)
         i = 1
@@ -76,9 +70,9 @@ class FileUtils:
                 if FileUtils.files_are_identical(new_path, src):
                     return None
             i += 1
-            
+
     @staticmethod
-    def fast_walk(top, topdown=True):
+    def fast_walk(top: str, topdown: bool = True):
         stack = [top]
         visited = []
 
@@ -103,35 +97,50 @@ class FileUtils:
             for item in reversed(visited):
                 yield item
 
+    seen_hashes = set()
+
+    @staticmethod
+    def is_fast_duplicate(path: str) -> bool:
+        checksum = FileUtils.quick_file_hash(path)
+        if checksum in FileUtils.seen_hashes:
+            return True
+        FileUtils.seen_hashes.add(checksum)
+        return False
+
 
 class FileMover:
     @staticmethod
-    def move_file(src: str, dest_folder: str, lock: threading.RLock, existing_files: set) -> str:
-        fn = os.path.basename(src)
+    def move_file(src: str, dest_folder: str, lock: threading.RLock, existing_files: set[str]) -> str:
+        filename = os.path.basename(src)
+        if FileUtils.is_fast_duplicate(src):
+            return f"Skipped {filename}, duplicate by checksum"
         try:
             os.makedirs(dest_folder, exist_ok=True)
-            dest = os.path.join(dest_folder, fn)
+            dest = os.path.join(dest_folder, filename)
             with lock:
                 new_dest = FileUtils.resolve_filename_conflict(dest, src)
                 if new_dest is None:
-                    return f"Skipped {fn}, duplicate"
+                    return f"Skipped {filename}, duplicate"
                 dest = new_dest
                 existing_files.add(os.path.basename(dest))
+
             if os.path.abspath(src) != os.path.abspath(dest):
                 shutil.move(src, dest)
-                return f"Moved {fn} → {dest_folder}"
-            return f"Skipped {fn}, already there"
+                return f"Moved {filename} → {dest_folder}"
+            return f"Skipped {filename}, already there"
         except Exception as e:
-            return f"Error moving {fn}: {e}"
+            return f"Error moving {filename}: {e}"
 
     @staticmethod
-    def safe_move_file(src: str, target: str, lock: threading.RLock, existing: set, log_func) -> None:
+    def safe_move_file(src: str, target: str, lock: threading.RLock, existing: set[str], log_func) -> None:
         try:
             result = FileMover.move_file(src, target, lock, existing)
             log_func(result)
         except Exception as e:
+            import traceback
             err = traceback.format_exc()
             log_func(f"[CRITICAL] Exception moving {src}: {e}\n{err}")
+
 
 class FolderNameGenerator:
     @staticmethod
@@ -147,4 +156,5 @@ class FolderNameGenerator:
             return os.path.join(str(dt.year), f"{dt.month:02d}", dt.strftime("%A"))
         if structure == "year_day":
             return os.path.join(str(dt.year), f"{dt.timetuple().tm_yday:03d}")
+        # Default fallback
         return os.path.join(str(dt.year), f"{dt.month:02d}", f"{dt.day:02d}")
