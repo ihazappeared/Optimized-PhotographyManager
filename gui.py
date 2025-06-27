@@ -1,10 +1,12 @@
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QTextCursor, QFont
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QTextEdit,
     QPushButton, QVBoxLayout, QHBoxLayout, QFileDialog,
-    QRadioButton, QButtonGroup, QCheckBox, QListWidget, QProgressBar, QMessageBox
+    QRadioButton, QButtonGroup, QCheckBox, QListWidget,
+    QProgressBar, QMessageBox, QGroupBox, QFormLayout, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
+
 import threading
 import os
 import ctypes
@@ -20,8 +22,10 @@ import flatten
 
 
 class PhotoOrganizerGUI(QWidget):
+    # Signals
     log_signal = Signal(str)
 
+    # Constants
     FOLDER_STRUCT_MAP = {
         0: "day",
         1: "month_day",
@@ -31,23 +35,28 @@ class PhotoOrganizerGUI(QWidget):
 
     PROGRESS_STYLE_DEFAULT = """
         QProgressBar {
-            height: 20px;
-            border: 1px solid black;
-            border-radius: 5px;
+            height: 22px;
+            border: 1px solid #444;
+            border-radius: 6px;
             text-align: center;
+            font-weight: bold;
         }
         QProgressBar::chunk {
-            background-color: #b0b0b0;
-            border-radius: 5px;
+            background-color: #88c0d0;
         }
     """
 
-    PROGRESS_STYLE_CANCEL = "QProgressBar::chunk { background-color: red; }"
+    PROGRESS_STYLE_CANCEL = """
+        QProgressBar::chunk {
+            background-color: red;
+        }
+    """
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Photo Organizer")
-        self.resize(900, 600)
+        self.resize(1000, 680)
+        self.setStyleSheet("QWidget { font-size: 12px; }")
 
         self.config = ConfigManager.load()
         self.lock = threading.RLock()
@@ -55,55 +64,61 @@ class PhotoOrganizerGUI(QWidget):
 
         self._init_widgets()
         self._connect_signals()
-        self._build_layout()
+        self._build_main_layout()
         self.load_config()
 
-        self.log_signal.connect(self._append_log)
+    # -----------------------
+    # Initialization Methods
+    # -----------------------
 
     def _init_widgets(self):
-        # Directory selection
+        # Base directory selection
         self.base_dir_edit = QLineEdit()
         self.browse_button = QPushButton("Browse")
 
-        # Folder structure radio buttons and grouping
+        # Folder structure radio buttons
         self.folder_struct_group = QButtonGroup(self)
         self.radio_day = QRadioButton("Day (DD-MM-YYYY)")
         self.radio_month_day = QRadioButton("Month/Day (YYYY/Month/DD)")
         self.radio_year_month_day = QRadioButton("Year/Month/Day (YYYY/MM/DD)")
         self.radio_year_day = QRadioButton("Year/Day of Year (YYYY/DDD)")
         self.radio_day.setChecked(True)
-        for i, rb in enumerate([self.radio_day, self.radio_month_day, self.radio_year_month_day, self.radio_year_day]):
+        for i, rb in enumerate([
+            self.radio_day, self.radio_month_day,
+            self.radio_year_month_day, self.radio_year_day
+        ]):
             self.folder_struct_group.addButton(rb, i)
 
-        # Checkboxes
-        self.video_separate_checkbox = QCheckBox("Separate Videos into 'Videos' Folder")
-        self.remove_empty_folders_checkbox = QCheckBox("Remove empty folders after organizing")
-        self.onedrive_warning_checkbox = QCheckBox("Warn if OneDrive is running")
+        # Options checkboxes
+        self.video_separate_checkbox = QCheckBox("Separate Videos")
+        self.remove_empty_folders_checkbox = QCheckBox("Remove Empty Folders")
+        self.onedrive_warning_checkbox = QCheckBox("Warn if OneDrive is Running")
 
-        # Excluded folders list and buttons
+        # Excluded folders list and controls
         self.excluded_folders_list = QListWidget()
         self.excluded_folders_list.setSelectionMode(QListWidget.ExtendedSelection)
-        self.add_excluded_button = QPushButton("Add Folder to Exclude")
+        self.add_excluded_button = QPushButton("Add Folder")
         self.remove_excluded_button = QPushButton("Remove Selected")
-        self.reset_all_button = QPushButton("Reset Cache and Settings")
 
-        # Control buttons
-        self.flatten_button = QPushButton("Flatten Folder Structure")
-        self.clean_filenames_button = QPushButton("Clean IMG Filenames")
-        self.start_button = QPushButton("Start Organizing")
+        # Action buttons
+        self.reset_all_button = QPushButton("Reset All Settings")
+        self.flatten_button = QPushButton("Flatten Structure")
+        self.clean_filenames_button = QPushButton("Clean Filenames")
+        self.start_button = QPushButton("Start")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
 
-        # Log and progress bar
+        # Log text area
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setLineWrapMode(QTextEdit.NoWrap)
+        self.log_text.setFont(QFont("Courier", 10))
 
+        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setOrientation(Qt.Horizontal)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(20)
         self.progress_bar.setStyleSheet(self.PROGRESS_STYLE_DEFAULT)
 
     def _connect_signals(self):
@@ -117,57 +132,91 @@ class PhotoOrganizerGUI(QWidget):
         self.cancel_button.clicked.connect(self.cancel_organizing)
         self.log_signal.connect(self._append_log)
 
-    def _build_layout(self):
+    def _build_main_layout(self):
         layout = QVBoxLayout()
 
-        # Top row: base directory selection
-        top_row = QHBoxLayout()
-        top_row.addWidget(QLabel("Base Directory:"))
-        top_row.addWidget(self.base_dir_edit)
-        top_row.addWidget(self.browse_button)
-        layout.addLayout(top_row)
+        layout.addWidget(self._build_path_group())
+        layout.addWidget(self._build_folder_struct_group())
+        layout.addWidget(self._build_options_group())
+        layout.addWidget(self._build_excluded_group())
+        layout.addWidget(self._build_controls_group())
+        layout.addWidget(QLabel("Log Output:"))
+        layout.addWidget(self.log_text)
 
-        # Folder structure options
-        folder_struct_layout = QHBoxLayout()
-        folder_struct_layout.addWidget(QLabel("Folder Structure:"))
-        folder_struct_layout.addWidget(self.radio_day)
-        folder_struct_layout.addWidget(self.radio_month_day)
-        folder_struct_layout.addWidget(self.radio_year_month_day)
-        folder_struct_layout.addWidget(self.radio_year_day)
-        layout.addLayout(folder_struct_layout)
+        self.setLayout(layout)
 
-        # Checkboxes
-        layout.addWidget(self.remove_empty_folders_checkbox)
+    # -----------------------
+    # Layout Group Builders
+    # -----------------------
+
+    def _build_path_group(self):
+        box = QGroupBox("Base Directory")
+        form = QHBoxLayout()
+        form.addWidget(self.base_dir_edit)
+        form.addWidget(self.browse_button)
+        box.setLayout(form)
+        return box
+
+    def _build_folder_struct_group(self):
+        box = QGroupBox("Folder Structure Format")
+        layout = QHBoxLayout()
+        layout.addWidget(self.radio_day)
+        layout.addWidget(self.radio_month_day)
+        layout.addWidget(self.radio_year_month_day)
+        layout.addWidget(self.radio_year_day)
+        layout.addStretch()
+        box.setLayout(layout)
+        return box
+
+    def _build_options_group(self):
+        box = QGroupBox("Options")
+        layout = QHBoxLayout()
         layout.addWidget(self.video_separate_checkbox)
+        layout.addWidget(self.remove_empty_folders_checkbox)
         layout.addWidget(self.onedrive_warning_checkbox)
+        layout.addStretch()
+        box.setLayout(layout)
+        return box
 
-        # Excluded folders with buttons
-        excluded_layout = QVBoxLayout()
-        excluded_layout.addWidget(QLabel("Exclude Folders:"))
-        excluded_layout.addWidget(self.excluded_folders_list)
+    def _build_excluded_group(self):
+        box = QGroupBox("Excluded Folders")
+        layout = QVBoxLayout()
+        layout.addWidget(self.excluded_folders_list)
 
-        excluded_buttons_layout = QHBoxLayout()
-        excluded_buttons_layout.addWidget(self.add_excluded_button)
-        excluded_buttons_layout.addWidget(self.remove_excluded_button)
-        excluded_layout.addLayout(excluded_buttons_layout)
+        btns = QHBoxLayout()
+        btns.addWidget(self.add_excluded_button)
+        btns.addWidget(self.remove_excluded_button)
 
-        layout.addLayout(excluded_layout)
+        layout.addLayout(btns)
+        box.setLayout(layout)
+        return box
 
-        # Reset settings button
-        layout.addWidget(self.reset_all_button)
-
-        # Control buttons and progress
+    def _build_controls_group(self):
+        box = QGroupBox("Actions")
+        layout = QVBoxLayout()
         layout.addWidget(self.flatten_button)
         layout.addWidget(self.clean_filenames_button)
         layout.addWidget(self.start_button)
         layout.addWidget(self.cancel_button)
+        layout.addWidget(self.reset_all_button)
         layout.addWidget(self.progress_bar)
+        box.setLayout(layout)
+        return box
 
-        # Log area
-        layout.addWidget(QLabel("Log:"))
-        layout.addWidget(self.log_text)
+    # -----------------------
+    # Logging
+    # -----------------------
 
-        self.setLayout(layout)
+    def _append_log(self, message: str):
+        if self.log_text.document().blockCount() > 1000:
+            self.log_text.clear()
+            self.log_text.append("[Log truncated]")
+        self.log_text.append(message)
+        self.log_text.moveCursor(QTextCursor.End)
+
+    # -----------------------
+    # UI Interaction Methods
+    # -----------------------
 
     def browse_base_dir(self):
         path = QFileDialog.getExistingDirectory(self, "Select Base Directory", self.base_dir_edit.text())
@@ -186,18 +235,15 @@ class PhotoOrganizerGUI(QWidget):
     def get_excluded_folders(self):
         return [self.excluded_folders_list.item(i).text() for i in range(self.excluded_folders_list.count())]
 
-    def _append_log(self, message: str):
-        if self.log_text.document().blockCount() > 1000:
-            self.log_text.clear()
-            self.log_text.append("[Log truncated]")
-        self.log_text.append(message)
-        self.log_text.moveCursor(QTextCursor.End)
-
     def cancel_organizing(self):
         if hasattr(self, "organizer"):
             self.progress_bar.setFormat("Cancelling...")
             self.progress_bar.setStyleSheet(self.PROGRESS_STYLE_CANCEL)
             self.log_signal.emit("Cancellation requested...")
+
+    # -----------------------
+    # Core Functionality
+    # -----------------------
 
     def start_organizing(self):
         base_dir = self.base_dir_edit.text().strip()
@@ -246,9 +292,10 @@ class PhotoOrganizerGUI(QWidget):
         cache_path = os.path.join(base_dir, ".photo_metadata_cache.db") if base_dir else None
 
         msg = QMessageBox(self)
-        msg.setWindowTitle("Reset Confirmation")
-        msg.setText("This will delete your settings and cache files.\nAre you sure you want to continue?")
+        msg.setWindowTitle("Confirm Reset")
+        msg.setText("Delete all settings and cache files?")
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+
         if msg.exec() == QMessageBox.Yes:
             for path in [config_path, cache_path]:
                 if path and os.path.exists(path):
@@ -263,8 +310,8 @@ class PhotoOrganizerGUI(QWidget):
             self.base_dir_edit.clear()
             self.video_separate_checkbox.setChecked(False)
             self.radio_day.setChecked(True)
+            self.log_signal.emit("Settings and cache reset.")
 
-            self.log_signal.emit("Settings and cache reset completed.")
     def clean_filenames_clicked(self):
         root_dir = self.base_dir_edit.text().strip()
         if not root_dir or not os.path.isdir(root_dir):
@@ -284,11 +331,14 @@ class PhotoOrganizerGUI(QWidget):
             return
 
         try:
-            # Flatten into root_dir itself, prefix folders to avoid filename conflicts
             flatten.flatten_folder_tree(root_dir=root_dir, target_dir=root_dir)
-            self.log_signal.emit(f"Flattened all subfolders into root directory: {root_dir}")
+            self.log_signal.emit(f"Flattened subfolders into: {root_dir}")
         except Exception as e:
             self.log_signal.emit(f"Error during flattening: {e}")
+
+    # -----------------------
+    # Config Persistence
+    # -----------------------
 
     def load_config(self):
         self.onedrive_warning_checkbox.setChecked(self.config.get("warn_onedrive", True))
@@ -305,12 +355,8 @@ class PhotoOrganizerGUI(QWidget):
 
         excluded = self.config.get("excluded_folders", [])
         self.excluded_folders_list.clear()
-        if isinstance(excluded, list):
-            for folder in excluded:
-                self.excluded_folders_list.addItem(folder)
-        elif isinstance(excluded, str) and excluded:
-            for folder in excluded.split(','):
-                self.excluded_folders_list.addItem(folder.strip())
+        for folder in excluded if isinstance(excluded, list) else excluded.split(','):
+            self.excluded_folders_list.addItem(folder.strip())
 
     def save_config(self):
         folder_struct_id = self.folder_struct_group.checkedId()
@@ -326,6 +372,10 @@ class PhotoOrganizerGUI(QWidget):
         }
         ConfigManager.save(config)
 
+
+# -----------------------------------
+# Helper function outside the class
+# -----------------------------------
 
 def remove_empty_folders(root_path: str, log_signal: Signal):
     def is_hidden_or_system(file_path):

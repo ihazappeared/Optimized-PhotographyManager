@@ -101,3 +101,5 @@ def clean_img_filenames(folder: str, recursive: bool = True, log_fn: Optional[ca
             else:
                 # No IMG_<digits> pattern, skip or optionally handle differently
                 pass
+
+
