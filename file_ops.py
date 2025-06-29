@@ -149,12 +149,30 @@ class FolderNameGenerator:
             return "Unknown Date"
 
         if structure == "day":
+            # Flat, compact
             return dt.strftime("%Y-%m-%d")
-        if structure == "month_day":
-            return os.path.join(str(dt.year), dt.strftime("%B"), f"{dt.day:02d}")
+
         if structure == "year_month_day":
-            return os.path.join(str(dt.year), f"{dt.month:02d}", dt.strftime("%A"))
+            # Hierarchical: year / month / day
+            return os.path.join(
+                dt.strftime("%Y"),
+                dt.strftime("%m"),
+                dt.strftime("%d")
+            )
+
+        if structure == "year_month":
+            # year / month
+            return os.path.join(
+                dt.strftime("%Y"),
+                dt.strftime("%m")
+            )
+
         if structure == "year_day":
-            return os.path.join(str(dt.year), f"{dt.timetuple().tm_yday:03d}")
+            # year / day-of-year (001-366)
+            return os.path.join(
+                dt.strftime("%Y"),
+                dt.strftime("%j")
+            )
+
         # Default fallback
-        return os.path.join(str(dt.year), f"{dt.month:02d}", f"{dt.day:02d}")
+        return dt.strftime("%Y-%m-%d")

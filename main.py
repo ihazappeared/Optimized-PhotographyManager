@@ -7,4 +7,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = PhotoOrganizerGUI()
     window.show()
+    print(app.style().objectName())
+
     sys.exit(app.exec())

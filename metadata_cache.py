@@ -36,7 +36,7 @@ class MetadataCache:
         """)
         for checksum, metadata_json, mod_time, path in cursor:
             metadata = json.loads(metadata_json)
-            index[checksum] = {
+            index[path] = {
                 "path": path,
                 "mod_time": mod_time,
                 "date_taken": metadata.get("date_taken"),

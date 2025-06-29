@@ -14,6 +14,10 @@ from constants import RAW_EXTS, VIDEO_EXTS, file_exts, CACHE_FILENAME
 class PhotoOrganizer(QObject):
     progress = Signal(int)
     log_msg = Signal(str)
+    
+    total_files = Signal(int)
+    moved_files = Signal(int)
+    skipped_files = Signal(int)
 
     def __init__(
         self,
@@ -55,6 +59,8 @@ class PhotoOrganizer(QObject):
             self.base_dir, file_exts, self.cache, self.memory_cache, self.excluded_folders
         ))
         total = len(file_list)
+        
+        self.total_files.emit(total)
         self._log(f"Metadata loaded for {total} files.")
         self._log(f"Found {total} files to organize.")
         return file_list, total
