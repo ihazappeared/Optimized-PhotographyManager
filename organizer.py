@@ -5,10 +5,10 @@ import threading
 import os
 from datetime import datetime
 
-from metadata_cache import MetadataCache
 from metadata import FileGatherer
 from file_ops import FolderNameGenerator, FileMover
-from constants import RAW_EXTS, VIDEO_EXTS, file_exts, CACHE_FILENAME
+from config import RAW_EXTS, VIDEO_EXTS, file_exts
+import gui
 
 
 class PhotoOrganizer(QObject):
@@ -37,10 +37,6 @@ class PhotoOrganizer(QObject):
         self.lock = threading.RLock()
         self._cancel_requested = threading.Event()
 
-        cache_path = os.path.join(self.base_dir, CACHE_FILENAME)
-        self.cache = MetadataCache(cache_path)
-        self.memory_cache = self.cache.load_into_memory()
-
     def cancel(self) -> None:
         self._cancel_requested.set()
 
@@ -56,7 +52,7 @@ class PhotoOrganizer(QObject):
     def _gather_files(self) -> tuple[list, int]:
         self._log(f"Starting scan in {self.base_dir}...")
         file_list = list(FileGatherer.gather_files_with_metadata(
-            self.base_dir, file_exts, self.cache, self.memory_cache, self.excluded_folders
+            self.base_dir, file_exts, self.excluded_folders
         ))
         total = len(file_list)
         
@@ -122,8 +118,6 @@ class PhotoOrganizer(QObject):
                 future.result()
                 progress_pct = int(((idx + 1) / total_files) * 100)
                 self._emit_progress(progress_pct)
-
-        self.cache.close()
 
         if self.is_cancelled():
             self._emit_progress(0)

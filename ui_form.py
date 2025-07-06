@@ -106,31 +106,46 @@ class Ui_Widget(object):
 
         self.verticalLayout.addWidget(self.sep_videos_checkbox)
 
-
-        self.verticalLayout_5.addWidget(self.OptionsBox)
-
         self.horizontalLayout_6 = QHBoxLayout()
         self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
-        self.flatten_button = QPushButton(self.ActionsBox)
+        self.flatten_button = QPushButton(self.OptionsBox)
         self.flatten_button.setObjectName(u"flatten_button")
         self.flatten_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.horizontalLayout_6.addWidget(self.flatten_button)
 
-        self.clean_filenames_button = QPushButton(self.ActionsBox)
+        self.clean_filenames_button = QPushButton(self.OptionsBox)
         self.clean_filenames_button.setObjectName(u"clean_filenames_button")
         self.clean_filenames_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.horizontalLayout_6.addWidget(self.clean_filenames_button)
 
 
-        self.verticalLayout_5.addLayout(self.horizontalLayout_6)
+        self.verticalLayout.addLayout(self.horizontalLayout_6)
 
-        self.reset_all_button = QPushButton(self.ActionsBox)
+        self.horizontalLayout_3 = QHBoxLayout()
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
+        self.startupadd_button = QPushButton(self.OptionsBox)
+        self.startupadd_button.setObjectName(u"startupadd_button")
+
+        self.horizontalLayout_3.addWidget(self.startupadd_button)
+
+        self.startupremove_button = QPushButton(self.OptionsBox)
+        self.startupremove_button.setObjectName(u"startupremove_button")
+
+        self.horizontalLayout_3.addWidget(self.startupremove_button)
+
+
+        self.verticalLayout.addLayout(self.horizontalLayout_3)
+
+        self.reset_all_button = QPushButton(self.OptionsBox)
         self.reset_all_button.setObjectName(u"reset_all_button")
         self.reset_all_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        self.verticalLayout_5.addWidget(self.reset_all_button)
+        self.verticalLayout.addWidget(self.reset_all_button)
+
+
+        self.verticalLayout_5.addWidget(self.OptionsBox)
 
         self.start_button = QPushButton(self.ActionsBox)
         self.start_button.setObjectName(u"start_button")
@@ -301,6 +316,8 @@ class Ui_Widget(object):
         self.sep_videos_checkbox.setText(QCoreApplication.translate("Widget", u"Separate Videos", None))
         self.flatten_button.setText(QCoreApplication.translate("Widget", u"Flatten Structure", None))
         self.clean_filenames_button.setText(QCoreApplication.translate("Widget", u"Clean Filenames", None))
+        self.startupadd_button.setText(QCoreApplication.translate("Widget", u"Add to Startup", None))
+        self.startupremove_button.setText(QCoreApplication.translate("Widget", u"Remove from Startup", None))
         self.reset_all_button.setText(QCoreApplication.translate("Widget", u"Reset All Settings", None))
         self.start_button.setText(QCoreApplication.translate("Widget", u" Start", None))
         self.progress_bar.setFormat(QCoreApplication.translate("Widget", u"%p%", None))

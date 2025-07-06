@@ -4,17 +4,6 @@ import re
 from typing import Optional
 
 def flatten_folder_tree(root_dir: str, target_dir: str) -> None:
-    """
-    Move all files from root_dir (including all subdirectories) into target_dir,
-    then remove all empty directories under root_dir.
-
-    Args:
-        root_dir: The root directory to flatten.
-        target_dir: The directory where all files will be moved.
-
-    Raises:
-        ValueError: If target_dir is inside root_dir or vice versa, to avoid recursion issues.
-    """
     root_dir = os.path.abspath(root_dir)
     target_dir = os.path.abspath(target_dir)
 
@@ -55,14 +44,7 @@ def flatten_folder_tree(root_dir: str, target_dir: str) -> None:
                 pass
 
 def clean_img_filenames(folder: str, recursive: bool = True, log_fn: Optional[callable] = None) -> None:
-    """
-    Rename files in `folder` to keep only the 'IMG_<digits>' pattern in their basename,
-    removing any prefixes or suffixes outside this pattern.
 
-    Args:
-        folder: Directory to process.
-        recursive: If True, process files in all subdirectories as well.
-    """
     pattern = re.compile(r'IMG_(\d+)')
 
     if recursive:
