@@ -3,9 +3,13 @@ import hashlib
 import shutil
 import threading
 from datetime import datetime
+from collections import deque
 
 
 class FileUtils:
+    _seen_hashes = set()
+    _seen_lock = threading.Lock()
+
     @staticmethod
     def get_file_mod_time(path: str) -> float | None:
         try:
@@ -19,7 +23,7 @@ class FileUtils:
             size = os.path.getsize(path)
             with open(path, 'rb') as f:
                 start = f.read(block_size)
-            return hashlib.md5(start + str(size).encode()).hexdigest()
+            return hashlib.md5(start + size.to_bytes(8, 'little')).hexdigest()
         except Exception:
             return ""
 
@@ -28,7 +32,7 @@ class FileUtils:
         try:
             hasher = hashlib.md5()
             with open(path, 'rb') as f:
-                while chunk := f.read(block_size):
+                for chunk in iter(lambda: f.read(block_size), b''):
                     hasher.update(chunk)
             return hasher.hexdigest()
         except Exception:
@@ -46,8 +50,7 @@ class FileUtils:
                     if b1 != b2:
                         return False
                     if not b1:
-                        break
-            return True
+                        return True
         except Exception:
             return False
 
@@ -73,23 +76,26 @@ class FileUtils:
 
     @staticmethod
     def fast_walk(top: str, topdown: bool = True):
-        stack = [top]
+        queue = deque([top])
         visited = []
 
-        while stack:
-            current_dir = stack.pop()
+        while queue:
+            current_dir = queue.popleft()
             try:
                 with os.scandir(current_dir) as it:
                     dirs, files = [], []
                     for entry in it:
-                        if entry.is_dir(follow_symlinks=False):
-                            dirs.append(entry.path)
-                        elif entry.is_file(follow_symlinks=False):
-                            files.append(entry.name)
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                dirs.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                files.append(entry.name)
+                        except Exception:
+                            continue
                     if topdown:
                         yield current_dir, dirs, files
                     visited.append((current_dir, dirs, files))
-                    stack.extend(dirs)
+                    queue.extend(dirs)
             except (PermissionError, FileNotFoundError):
                 continue
 
@@ -97,14 +103,13 @@ class FileUtils:
             for item in reversed(visited):
                 yield item
 
-    seen_hashes = set()
-
     @staticmethod
     def is_fast_duplicate(path: str) -> bool:
         checksum = FileUtils.quick_file_hash(path)
-        if checksum in FileUtils.seen_hashes:
-            return True
-        FileUtils.seen_hashes.add(checksum)
+        with FileUtils._seen_lock:
+            if checksum in FileUtils._seen_hashes:
+                return True
+            FileUtils._seen_hashes.add(checksum)
         return False
 
 
@@ -114,18 +119,23 @@ class FileMover:
         filename = os.path.basename(src)
         if FileUtils.is_fast_duplicate(src):
             return f"Skipped {filename}, duplicate by checksum"
+
         try:
             os.makedirs(dest_folder, exist_ok=True)
             dest = os.path.join(dest_folder, filename)
+
             with lock:
-                new_dest = FileUtils.resolve_filename_conflict(dest, src)
-                if new_dest is None:
+                resolved_dest = FileUtils.resolve_filename_conflict(dest, src)
+                if resolved_dest is None:
                     return f"Skipped {filename}, duplicate"
-                dest = new_dest
+                dest = resolved_dest
                 existing_files.add(os.path.basename(dest))
 
             if os.path.abspath(src) != os.path.abspath(dest):
-                shutil.move(src, dest)
+                try:
+                    os.rename(src, dest)
+                except OSError:
+                    shutil.move(src, dest)
                 return f"Moved {filename} → {dest_folder}"
             return f"Skipped {filename}, already there"
         except Exception as e:
@@ -148,31 +158,10 @@ class FolderNameGenerator:
         if not dt:
             return "Unknown Date"
 
-        if structure == "day":
-            # Flat, compact
-            return dt.strftime("%Y-%m-%d")
-
-        if structure == "year_month_day":
-            # Hierarchical: year / month / day
-            return os.path.join(
-                dt.strftime("%Y"),
-                dt.strftime("%m"),
-                dt.strftime("%d")
-            )
-
-        if structure == "year_month":
-            # year / month
-            return os.path.join(
-                dt.strftime("%Y"),
-                dt.strftime("%m")
-            )
-
-        if structure == "year_day":
-            # year / day-of-year (001-366)
-            return os.path.join(
-                dt.strftime("%Y"),
-                dt.strftime("%j")
-            )
-
-        # Default fallback
-        return dt.strftime("%Y-%m-%d")
+        formats = {
+            "day": lambda: dt.strftime("%Y-%m-%d"),
+            "year_month_day": lambda: os.path.join(dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%d")),
+            "year_month": lambda: os.path.join(dt.strftime("%Y"), dt.strftime("%m")),
+            "year_day": lambda: os.path.join(dt.strftime("%Y"), dt.strftime("%j")),
+        }
+        return formats.get(structure, lambda: dt.strftime("%Y-%m-%d"))()

@@ -1,87 +1,77 @@
 import os
 import shutil
 import re
-from typing import Optional
+from typing import Optional, Callable
+from collections import deque
+
 
 def flatten_folder_tree(root_dir: str, target_dir: str) -> None:
-    root_dir = os.path.abspath(root_dir)
-    target_dir = os.path.abspath(target_dir)
-
-    if target_dir.startswith(root_dir) and target_dir != root_dir:
-        raise ValueError("target_dir cannot be inside root_dir.")
-    if root_dir.startswith(target_dir) and target_dir != root_dir:
-        raise ValueError("root_dir cannot be inside target_dir.")
+    root_dir, target_dir = map(os.path.abspath, (root_dir, target_dir))
+    if (target_dir.startswith(root_dir) or root_dir.startswith(target_dir)) and root_dir != target_dir:
+        raise ValueError("Directories cannot be nested inside each other.")
 
     os.makedirs(target_dir, exist_ok=True)
+    existing = set(os.listdir(target_dir))
 
-    existing_files = set(os.listdir(target_dir))
+    stack = deque()
+    for dirpath, _, files in os.walk(root_dir, topdown=False):
+        stack.append((dirpath, files))
 
-    for current_dir, _, files in os.walk(root_dir, topdown=False):
-        for file in files:
-            src_path = os.path.join(current_dir, file)
-            if not os.path.isfile(src_path):
-                continue  # Skip if not a file
-
-            new_name = file
-            base, ext = os.path.splitext(new_name)
-
-            # Avoid overwriting by adding suffixes if name exists
-            candidate_name = new_name
-            counter = 1
-            while candidate_name in existing_files:
-                candidate_name = f"{base}_{counter}{ext}"
-                counter += 1
-
-            existing_files.add(candidate_name)
-            dest_path = os.path.join(target_dir, candidate_name)
-            shutil.move(src_path, dest_path)
-
-        if current_dir != root_dir:
-            try:
-                os.rmdir(current_dir)
-            except OSError:
-                # Directory not empty or permission denied, skip removal
-                pass
-
-def clean_img_filenames(folder: str, recursive: bool = True, log_fn: Optional[callable] = None) -> None:
-
-    pattern = re.compile(r'IMG_(\d+)')
-
-    if recursive:
-        walker = os.walk(folder)
-    else:
-        walker = [(folder, [], os.listdir(folder))]
-
-    for dirpath, _, files in walker:
-        for filename in files:
-            filepath = os.path.join(dirpath, filename)
-            if not os.path.isfile(filepath):
+    while stack:
+        dirpath, files = stack.pop()
+        for f in files:
+            src = os.path.join(dirpath, f)
+            if not os.path.isfile(src):
                 continue
 
-            base, ext = os.path.splitext(filename)
+            name, ext = os.path.splitext(f)
+            new_name = f
+            count = 1
+            while new_name in existing:
+                new_name = f"{name}_{count}{ext}"
+                count += 1
+            existing.add(new_name)
 
-            # Search for IMG_<digits> pattern anywhere in the filename
-            match = pattern.search(base)
-            if match:
-                new_base = f"IMG_{match.group(1)}"
-                # If new filename is already clean, skip renaming
-                if new_base == base:
-                    continue
-                new_name = new_base + ext
-                new_path = os.path.join(dirpath, new_name)
+            shutil.move(src, os.path.join(target_dir, new_name))
 
-                # Handle potential naming conflicts by adding suffix _1, _2, ...
-                counter = 1
-                while os.path.exists(new_path):
-                    new_name = f"{new_base}_{counter}{ext}"
-                    new_path = os.path.join(dirpath, new_name)
-                    counter += 1
-
-                os.rename(filepath, new_path)
-                if log_fn:
-                    log_fn(f"Renamed: {filepath} -> {new_path}")
-            else:
-                # No IMG_<digits> pattern, skip or optionally handle differently
+        if dirpath != root_dir:
+            try:
+                os.rmdir(dirpath)
+            except OSError:
                 pass
 
 
+def clean_img_filenames(folder: str, recursive: bool = True, log_fn: Optional[Callable[[str], None]] = None) -> None:
+    pattern = re.compile(r'IMG_(\d+)')
+    walk = os.walk(folder) if recursive else [(folder, [], os.listdir(folder))]
+
+    for dirpath, _, files in walk:
+        existing = set(files)
+
+        for f in files:
+            path = os.path.join(dirpath, f)
+            if not os.path.isfile(path):
+                continue
+
+            base, ext = os.path.splitext(f)
+            match = pattern.search(base)
+            if not match:
+                continue
+
+            new_base = f"IMG_{match.group(1)}"
+            if new_base == base:
+                continue
+
+            new_name = f"{new_base}{ext}"
+            count = 1
+            while new_name in existing or os.path.exists(os.path.join(dirpath, new_name)):
+                new_name = f"{new_base}_{count}{ext}"
+                count += 1
+
+            new_path = os.path.join(dirpath, new_name)
+            os.rename(path, new_path)
+            existing.remove(f)
+            existing.add(new_name)
+
+            if log_fn:
+                log_fn(f"Renamed: {path} -> {new_path}")
